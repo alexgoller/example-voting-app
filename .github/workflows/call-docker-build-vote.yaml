@@ -99,7 +99,7 @@ jobs:
     name: Security Scan
     needs: prepare-scan-info
     if: success()
-    uses: ./.github/workflows/sysdig-scan-reusable.yml
+    uses: ./.github/workflows/sysdig-scan-reusable.yaml
     permissions:
       contents: read
       security-events: write
