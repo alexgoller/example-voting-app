@@ -57,8 +57,8 @@ jobs:
             --console-log \
             --dbpath=${GITHUB_WORKSPACE}/cache/db/ \
             --cachepath=${GITHUB_WORKSPACE}/cache/scanner-cache/ \
-            --sarif-output=results.sarif
-
+            --output=json
+            
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v2
         if: always()  # Upload results even if scan fails
