@@ -1,3 +1,4 @@
+// Copyright (c) AlexG
 var express = require('express'),
     async = require('async'),
     { Pool } = require('pg'),
