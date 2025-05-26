@@ -10,7 +10,7 @@ on:
       - main
 
 env:
-  SYSDIG_SECURE_ENDPOINT: "https://app.sysdig.com"
+  SYSDIG_SECURE_ENDPOINT: "https://eu1.app.sysdig.com"
   REGISTRY_HOST: "ghcr.io"
   IMAGE_NAME: "alexgoller/example-voting-app-result"
   IMAGE_TAG: "latest"
@@ -24,43 +24,58 @@ jobs:
     permissions:
       contents: read
       security-events: write  # needed for uploading SARIF results
+      actions: read           # needed for workflow_run trigger
+    
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Updated to v4
       
-      - name: Setup cache
-        uses: actions/cache@v3
+      - name: Scan image with Sysdig
+        id: scan
+        uses: sysdiglabs/scan-action@v5
         with:
-          path: cache
-          key: ${{ runner.os }}-cache-${{ hashFiles('**/sysdig-cli-scanner', '**/latest_version.txt', '**/db/main.db.meta.json', '**/scanner-cache/inlineScannerCache.db') }}
-          restore-keys: ${{ runner.os }}-cache-
+          # Image to scan
+          image-tag: ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          
+          # Sysdig configuration
+          sysdig-secure-token: ${{ secrets.SECURE_API_TOKEN }}
+          sysdig-secure-url: ${{ env.SYSDIG_SECURE_ENDPOINT }}
+          
+          # Security configuration
+          stop-on-failed-policy-eval: false  # Set to true if you want to fail the job on policy violations
+          stop-on-processing-error: true     # Fail on scanner errors
+          
+          # Filtering and reporting options
+          severity-at-least: "medium"        # Only report medium and above vulnerabilities
+          group-by-package: true            # Group vulnerabilities by package in SARIF
+          
+          # Optional: Specify policies to evaluate (comma-separated)
+          # policies: "policy-name-1,policy-name-2"
+          
+          # Optional: Custom pull string for better identification in Sysdig UI
+          # override-pullstring: "${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
 
-      - name: Download sysdig-cli-scanner if needed
-        run: |
-          curl -sLO https://download.sysdig.com/scanning/sysdig-cli-scanner/latest_version.txt
-          mkdir -p ${GITHUB_WORKSPACE}/cache/db/
-          if [ ! -f ${GITHUB_WORKSPACE}/cache/latest_version.txt ] || [ $(cat ./latest_version.txt) != $(cat ${GITHUB_WORKSPACE}/cache/latest_version.txt) ]; then
-            cp ./latest_version.txt ${GITHUB_WORKSPACE}/cache/latest_version.txt
-            curl -sL -o ${GITHUB_WORKSPACE}/cache/sysdig-cli-scanner "https://download.sysdig.com/scanning/bin/sysdig-cli-scanner/$(cat ${GITHUB_WORKSPACE}/cache/latest_version.txt)/linux/amd64/sysdig-cli-scanner"
-            chmod +x ${GITHUB_WORKSPACE}/cache/sysdig-cli-scanner
-          else
-            echo "sysdig-cli-scanner latest version already downloaded"
-          fi
-
-      - name: Scan the image using sysdig-cli-scanner
-        env:
-          SECURE_API_TOKEN: ${{ secrets.SECURE_API_TOKEN }}
-        run: |
-          ${GITHUB_WORKSPACE}/cache/sysdig-cli-scanner \
-            --apiurl ${SYSDIG_SECURE_ENDPOINT} \
-            docker://${REGISTRY_HOST}/${IMAGE_NAME}:${IMAGE_TAG} \
-            --console-log \
-            --dbpath=${GITHUB_WORKSPACE}/cache/db/ \
-            --cachepath=${GITHUB_WORKSPACE}/cache/scanner-cache/ \
-            --output=json
-            
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v2
+      - name: Upload SARIF file to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3  # Updated to v3
         if: always()  # Upload results even if scan fails
         with:
-          sarif_file: results.sarif
+          sarif_file: ${{ github.workspace }}/sarif.json
+          category: "sysdig-container-scan"    # Unique category to avoid conflicts
+          
+      - name: Upload scan results as artifact
+        uses: actions/upload-artifact@v4
+        if: always()  # Always upload for debugging
+        with:
+          name: sysdig-scan-results
+          path: |
+            ${{ github.workspace }}/sarif.json
+            ${{ github.workspace }}/sysdig-scan-result.json
+          retention-days: 30
+
+      # Optional: Add a step to comment on PR with scan summary (for PR workflows)
+      # - name: Comment PR with scan results
+      #   if: github.event_name == 'pull_request' && always()
+      #   uses: actions/github-script@v7
+      #   with:
+      #     script: |
+      #       // Add custom logic to parse results and comment on PR
