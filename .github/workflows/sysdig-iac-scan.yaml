@@ -48,6 +48,7 @@ jobs:
           # Enable IaC scanning mode
           mode: iac
           iac-scan-path: ./k8s-specifications
+          output-json: sysdig-scan-result.json
           
           # Sysdig configuration
           sysdig-secure-token: ${{ secrets.SECURE_API_TOKEN }}
