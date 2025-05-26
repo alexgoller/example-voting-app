@@ -1,4 +1,5 @@
 // Copyright (c) AlexG
+// the stuff now works :)
 var express = require('express'),
     async = require('async'),
     { Pool } = require('pg'),
