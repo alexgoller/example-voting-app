@@ -1,4 +1,3 @@
-# fix
 name: Sysdig Security Scan
 on:
   workflow_call:
@@ -53,18 +52,37 @@ jobs:
           severity-at-least: ${{ inputs.severity-threshold }}
           group-by-package: true
           
+      - name: Prepare SARIF category
+        id: sarif-category
+        run: |
+          # Replace forward slashes and other invalid characters with hyphens for SARIF category
+          SAFE_IMAGE_NAME=$(echo "${{ inputs.image-name }}" | sed 's/[\/:<>|*?\\]/-/g')
+          SARIF_CATEGORY="sysdig-${SAFE_IMAGE_NAME}-scan"
+          echo "sarif-category=${SARIF_CATEGORY}" >> $GITHUB_OUTPUT
+          echo "Generated SARIF category: ${SARIF_CATEGORY}"
+          
       - name: Upload SARIF file to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: ${{ github.workspace }}/sarif.json
-          category: sysdig-${{ inputs.image-name }}-scan
+          category: ${{ steps.sarif-category.outputs.sarif-category }}
+          
+      - name: Prepare artifact name
+        id: artifact-name
+        run: |
+          # Replace forward slashes and other invalid characters with hyphens
+          SAFE_IMAGE_NAME=$(echo "${{ inputs.image-name }}" | sed 's/[\/:<>|*?\\]/-/g')
+          SAFE_IMAGE_TAG=$(echo "${{ inputs.image-tag }}" | sed 's/[\/:<>|*?\\]/-/g')
+          ARTIFACT_NAME="sysdig-scan-results-${SAFE_IMAGE_NAME}-${SAFE_IMAGE_TAG}"
+          echo "artifact-name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+          echo "Generated artifact name: ${ARTIFACT_NAME}"
           
       - name: Upload scan results as artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sysdig-scan-results-${{ inputs.image-name }}-${{ inputs.image-tag }}
+          name: ${{ steps.artifact-name.outputs.artifact-name }}
           path: |
             ${{ github.workspace }}/sarif.json
             ${{ github.workspace }}/sysdig-scan-result.json
