@@ -46,6 +46,7 @@ jobs:
         uses: sysdiglabs/scan-action@v5
         with:
           # Enable IaC scanning mode
+          mode: iac
           iac-scan-path: .
           
           # Sysdig configuration
