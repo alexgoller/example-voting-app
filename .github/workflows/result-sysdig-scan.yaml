@@ -1,81 +1,70 @@
-name: Result Service Sysdig Scan
-
+name: Sysdig Security Scan
 on:
-  # Run when image is built and pushed
-  workflow_run:
-    workflows: ["Build Result"]
-    types:
-      - completed
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      image-name:
+        description: 'Full image name to scan'
+        required: true
+        type: string
+      image-tag:
+        description: 'Image tag to scan'
+        required: true
+        type: string
+      registry-host:
+        description: 'Registry host'
+        required: false
+        type: string
+        default: 'ghcr.io'
+      severity-threshold:
+        description: 'Minimum severity level'
+        required: false
+        type: string
+        default: 'medium'
+    secrets:
+      SECURE_API_TOKEN:
+        required: true
 
 env:
   SYSDIG_SECURE_ENDPOINT: "https://eu1.app.sysdig.com"
-  REGISTRY_HOST: "ghcr.io"
-  IMAGE_NAME: "alexgoller/example-voting-app-result"
-  IMAGE_TAG: "latest"
 
 jobs:
   sysdig-scan:
     name: Sysdig Secure Scan
     runs-on: ubuntu-latest
-    # Only run if the build workflow succeeded
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
-      security-events: write  # needed for uploading SARIF results
-      actions: read           # needed for workflow_run trigger
+      security-events: write
+      actions: read
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v4  # Updated to v4
+        uses: actions/checkout@v4
       
       - name: Scan image with Sysdig
         id: scan
         uses: sysdiglabs/scan-action@v5
         with:
-          # Image to scan
-          image-tag: ${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-          
-          # Sysdig configuration
+          image-tag: ${{ inputs.registry-host }}/${{ inputs.image-name }}:${{ inputs.image-tag }}
           sysdig-secure-token: ${{ secrets.SECURE_API_TOKEN }}
           sysdig-secure-url: ${{ env.SYSDIG_SECURE_ENDPOINT }}
+          stop-on-failed-policy-eval: false
+          stop-on-processing-error: true
+          severity-at-least: ${{ inputs.severity-threshold }}
+          group-by-package: true
           
-          # Security configuration
-          stop-on-failed-policy-eval: false  # Set to true if you want to fail the job on policy violations
-          stop-on-processing-error: true     # Fail on scanner errors
-          
-          # Filtering and reporting options
-          severity-at-least: "medium"        # Only report medium and above vulnerabilities
-          group-by-package: true            # Group vulnerabilities by package in SARIF
-          
-          # Optional: Specify policies to evaluate (comma-separated)
-          # policies: "policy-name-1,policy-name-2"
-          
-          # Optional: Custom pull string for better identification in Sysdig UI
-          # override-pullstring: "${{ env.REGISTRY_HOST }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-
       - name: Upload SARIF file to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3  # Updated to v3
-        if: always()  # Upload results even if scan fails
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: ${{ github.workspace }}/sarif.json
-          category: "sysdig-container-scan"    # Unique category to avoid conflicts
+          category: sysdig-${{ inputs.image-name }}-scan
           
       - name: Upload scan results as artifact
         uses: actions/upload-artifact@v4
-        if: always()  # Always upload for debugging
+        if: always()
         with:
-          name: sysdig-scan-results
+          name: sysdig-scan-results-${{ inputs.image-name }}-${{ inputs.image-tag }}
           path: |
             ${{ github.workspace }}/sarif.json
             ${{ github.workspace }}/sysdig-scan-result.json
           retention-days: 30
-
-      # Optional: Add a step to comment on PR with scan summary (for PR workflows)
-      # - name: Comment PR with scan results
-      #   if: github.event_name == 'pull_request' && always()
-      #   uses: actions/github-script@v7
-      #   with:
-      #     script: |
-      #       // Add custom logic to parse results and comment on PR

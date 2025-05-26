@@ -1,6 +1,5 @@
 name: Build Vote
 # template source: https://github.com/dockersamples/.github/blob/main/templates/call-docker-build.yaml
-
 on:
   # we want pull requests so we can build(test) but not push to image registry
   push:
@@ -20,39 +19,26 @@ on:
 
 jobs:
   call-docker-build:
-
     name: Vote Call Docker Build
-
     uses: dockersamples/.github/.github/workflows/reusable-docker-build.yaml@main
-
     permissions:
       contents: read
       packages: write # needed to push docker image to ghcr.io
       pull-requests: write # needed to create and update comments in PRs
     
     secrets:
-
-      # Only needed if with:dockerhub-enable is true below
-      dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
-
-      # Only needed if with:dockerhub-enable is true below
-      dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
-
     with:
       
       ### REQUIRED
       ### ENABLE ONE OR BOTH REGISTRIES
       ### tell docker where to push.
       ### NOTE if Docker Hub is set to true, you must set secrets above and also add account/repo/tags below
-      dockerhub-enable: true
       ghcr-enable: true
-
       ### REQUIRED 
       ### A list of the account/repo names for docker build. List should match what's enabled above
       ### defaults to:
       image-names: |
-        ghcr.io/dockersamples/example-voting-app-vote
-        dockersamples/examplevotingapp_vote
+        ghcr.io/alexgoller/example-voting-app-vote
       
       ### REQUIRED set rules for tagging images, based on special action syntax:
       ### https://github.com/docker/metadata-action#tags-input
@@ -62,6 +48,7 @@ jobs:
         type=raw,value=before,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
         type=raw,value=after,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
         type=ref,event=pr
+        type=sha,prefix={{branch}}-
       
       ### path to where docker should copy files into image
       ### defaults to root of repository (.)
@@ -69,7 +56,6 @@ jobs:
       
       ### Dockerfile alternate name. Default is Dockerfile (relative to context path)
       # file: Containerfile
-
       ### build stage to target, defaults to empty, which builds to last stage in Dockerfile
       # target:
       
@@ -79,4 +65,48 @@ jobs:
       
       ### Create a PR comment with image tags and labels
       ### defaults to false
-      # comment-enable: false
+      comment-enable: true
+
+  # New job to prepare image info for security scan
+  prepare-scan-info:
+    name: Prepare Security Scan Info
+    runs-on: ubuntu-latest
+    needs: call-docker-build
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      image-name: ${{ steps.image-info.outputs.image-name }}
+      image-tag: ${{ steps.image-info.outputs.image-tag }}
+      registry-host: ${{ steps.image-info.outputs.registry-host }}
+    steps:
+      - name: Set image info for scanning
+        id: image-info
+        run: |
+          # Extract image name without registry prefix
+          IMAGE_NAME="dockersamples/example-voting-app-vote"
+          # Use latest tag for main branch scans (most recently pushed)
+          IMAGE_TAG="latest"
+          REGISTRY_HOST="ghcr.io"
+          
+          echo "image-name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "image-tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "registry-host=${REGISTRY_HOST}" >> $GITHUB_OUTPUT
+          
+          echo "Will scan: ${REGISTRY_HOST}/${IMAGE_NAME}:${IMAGE_TAG}"
+
+  # Security scan job using the reusable workflow
+  security-scan:
+    name: Security Scan
+    needs: prepare-scan-info
+    if: success()
+    uses: ./.github/workflows/sysdig-scan-reusable.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    with:
+      image-name: ${{ needs.prepare-scan-info.outputs.image-name }}
+      image-tag: ${{ needs.prepare-scan-info.outputs.image-tag }}
+      registry-host: ${{ needs.prepare-scan-info.outputs.registry-host }}
+      severity-threshold: 'medium'
+    secrets:
+      SECURE_API_TOKEN: ${{ secrets.SECURE_API_TOKEN }}
