@@ -82,7 +82,7 @@ jobs:
         id: image-info
         run: |
           # Extract image name without registry prefix
-          IMAGE_NAME="dockersamples/example-voting-app-vote"
+          IMAGE_NAME="alexgoller/example-voting-app-vote"
           # Use latest tag for main branch scans (most recently pushed)
           IMAGE_TAG="latest"
           REGISTRY_HOST="ghcr.io"
