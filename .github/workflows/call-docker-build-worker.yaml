@@ -21,7 +21,7 @@ on:
 jobs:
   call-docker-build:
     name: Worker Call Docker Build
-    uses: ockersamples/.github/.github/workflows/reusable-docker-build.yaml@main
+    uses: dockersamples/.github/.github/workflows/reusable-docker-build.yaml@main
     permissions:
       contents: read
       packages: write # needed to push docker image to ghcr.io
