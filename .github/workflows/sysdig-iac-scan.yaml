@@ -48,7 +48,6 @@ jobs:
           # Enable IaC scanning mode
           mode: iac
           iac-scan-path: ./k8s-specifications
-          output-json: sysdig-scan-result.json
           
           # Sysdig configuration
           sysdig-secure-token: ${{ secrets.SECURE_API_TOKEN }}
@@ -63,64 +62,3 @@ jobs:
           
           # Optional: specify which IaC frameworks to scan
           # iac-scan-frameworks: "terraform,kubernetes,cloudformation"
-          
-      - name: Upload IaC scan results as artifact
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: sysdig-iac-scan-results-${{ github.run_number }}
-          path: |
-            ${{ github.workspace }}/sysdig-scan-result.json
-          retention-days: 30
-          
-      - name: Comment PR with IaC scan summary
-        if: github.event_name == 'pull_request' && always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            try {
-              let totalIssues = 0;
-              let criticalIssues = 0;
-              let highIssues = 0;
-              
-              runs.forEach(run => {
-                const results = run.results || [];
-                totalIssues += results.length;
-                results.forEach(result => {
-                  const level = result.level || 'info';
-                  if (level === 'error') criticalIssues++;
-                  else if (level === 'warning') highIssues++;
-                });
-              });
-              
-              const comment = `## 🔍 Sysdig IaC Security Scan Results
-              
-              - **Total Issues Found**: ${totalIssues}
-              - **Critical**: ${criticalIssues}
-              - **High**: ${highIssues}
-              - **Medium/Low**: ${totalIssues - criticalIssues - highIssues}
-              
-              ${totalIssues > 0 ? '⚠️ Please review the security findings in the Security tab.' : '✅ No security issues found in infrastructure code!'}
-              
-              <details>
-              <summary>View scan details</summary>
-              
-              Scanned files for infrastructure security issues including:
-              - Terraform configurations
-              - Kubernetes manifests  
-              - Docker Compose files
-              - CloudFormation templates
-              - Other IaC files
-              
-              </details>`;
-              
-              github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: comment
-              });
-            } catch (error) {
-              console.log('Could not parse SARIF results:', error.message);
-            }
