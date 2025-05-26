@@ -23,9 +23,6 @@ jobs:
   call-docker-build:
     name: Result Call Docker Build
     uses: dockersamples/.github/.github/workflows/reusable-docker-build.yaml@main
-    outputs:
-      image-names: ${{ steps.docker-build.outputs.image-names }}
-      image-tag: ${{ steps.docker-build.outputs.image-tag }}
     permissions:
       contents: read
       packages: write # needed to push docker image to ghcr.io
